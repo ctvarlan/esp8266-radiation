@@ -1,93 +1,120 @@
 
-gpio0 = 3
-gpio2 = 4
+function getTime()
+    if lastUpdate >= 900 then
 
-pulse_count = 0
-cpm = 0   --count-per-minute
-cp5m = 0  --count-per-5minutes
-cph = 0   --count-per-hour
+        conn=net.createConnection(net.TCP, 0)
 
-fix = "GET /update?key=XXXXXXXXXXXXXXXX&" --put here your api key from Thingspeak
+        conn:on("connection",function(conn, payload)
+            conn:send("HEAD / HTTP/1.1\r\n"..
+                      "Host: google.com\r\n"..
+                      "Accept: */*\r\n"..
+                      "User-Agent: Mozilla/4.0 (compatible; esp8266 Lua;)"..
+                      "\r\n\r\n")
+               end)
 
-gpio.mode(gpio0,gpio.INT,gpio.PULLUP)
-gpio.mode(gpio2,gpio.OUTPUT)
-print("init done")
--- at interrupt request:
-gpio.trig(gpio0,"down", function()
-		pulse_count = pulse_count + 1
-		end)
-
-function thingspeak(field,value)
---field5 is cpm
---field6 is cp5m
---field7 is cph
-print("field: "..field)
-    if field == 5 then
-        cmd = fix.."field5="..value
-    end
-    if field == 6 then
-        cmd = fix.."field6="..value
-    end
-    if field == 7 then
-        cmd = fix.."field7="..value
-    end
---print("cmd: "..cmd) --for test purposes
-	conn=net.createConnection(net.TCP, 0)
+        conn:on("receive", function(conn, payload)
+        --print(payload)
+            time = string.sub(payload,  string.find(payload,"Date: ")+23, string.find(payload,"Date: ")+31)
+            hour = string.sub(time, 0, 2) + 20
+    		if hour > 23 then hour = hour - 24 end
+            minute = string.sub(time, 4,5) + 0
+            second = string.sub(time, 7,9) + 0
+			mins = 60 * hour + minute
+            print("Time: "..hour.."-"..minute.."-"..second)
+            conn:close()
+            lastUpdate = 0
+            end)
+        conn:connect(80,'google.com')
+    end--if
+end--getTime
+--------------------------------------------------------------------------------
+function thingspeak(f)
+    f = fix..f
+    --print(f)
+	conn = net.createConnection(net.TCP, 0)
 
 	conn:on("receive", function(conn, payload)
-		print("PL: "..payload)  --for test purposes
+		--print("PL: "..payload)
 		conn:close()
 	end)
 
 	conn:on("connection",function(conn, payload)
-		conn:send(cmd.."HTTP/1.1\r\n"..
+		conn:send(f.." HTTP/1.1\r\n"..     
 		"Host: api.thingspeak.com\r\n"..
 		"Accept: */*\r\n"..
-		"User-Agent: Mozilla/4.0 (compatible; esp8266 Lua; Windows NT 5.1)\r\n"..
-		"\r\n")
+		"User-Agent: Mozilla/4.0 (compatible; esp8266 Lua; Windows NT 5.1)\r\n"
+		.."\r\n")
 	end)
 
-	conn:connect(80,'184.106.153.149') --api.thingspeak.com 184.106.153.149
-end-- function thingspeak()
+	conn:connect(80,'184.106.153.149') --api.thingspeak.com
 
-function one_minute()
--- read the counter each 60 sec and reset the pulse_count
-	cpm = pulse_count 
-	cp5m = cp5m + cpm
-    print("cpm: "..cpm)--for test purposes
-    --send count per minute cpm to TS
-    thingspeak(5,cpm)
-	pulse_count = 0
 end
 
-function five_minute()
-    cph = cph + cp5m
-    print("last 5 minutes: "..count_5m)--for test purposes
-    --send count_5m to TS
-    thingspeak(6,cp5m)
-    count_5m = 0
+function doit()
+    if second == 0 then
+        f5 = pulse      --cpm
+        f6 = f6 + pulse --cph
+        f7 = f7 + pulse --cpd
+        pulse = 0
+        cmd = 'field5='..f5
+        if minute == 0 then --each hour
+            cmd = 'field5='..f5..'&field6='..f6
+            if hour == 0 then --each day
+                cmd = 'field5='..f5..'&field6='..f6..'&field7='..f7
+                f5 = 0
+                f6 = 0
+                f7 = 0
+            end --if hour
+            f5 = 0
+            f6 = 0
+        end --if minute
+        cmd = cmd..'&field8='..mins
+        thingspeak(cmd)
+    end --if second
+end --doit()
+
+
+function incrementTime()
+    second = second + 1
+    lastUpdate = lastUpdate + 1
+    if second == 60 then
+        second = 0
+        minute = minute + 1
+        mins = 60 * hour + minute
+        if mins == 1440 then mins = 0 end
+    end
+    if minute == 60 then
+        minute = 0
+        hour = hour + 1
+    end
+    if hour == 24 then
+        hour = 0
+    end
+    --action()
+    doit()
 end
 
-function one_hour()
-    --send cph to TS
-    print("last hour: "..cph)--for test purposes
-    thingspeak(7,cph)
-    cph = 0
-end
+f5 = 0
+f6 = 0
+f7 = 0
 
-tmr.alarm(0,60000,1, function()
-	one_minute()
-	end)
---print("tmr 0")--for test purposes
-tmr.alarm(1,3600000,1, function()
-    one_hour()
-    --print("1h: Data sent to thingspeak")
-    end)
---print("tmr 1")--for test purposes
-tmr.alarm(2,300000,1, function() --each 300 seconds
-    five_minute()
-    --print("5m: Data sent to thingspeak")
-    end)
---print("tmr 2")--for test purposes
+getTime()
+--print("now got time: "..hour.."-"..minute.."-"..second)
 
--------------------------------------------------------------------------------
+tmr.alarm(1, 1000, 1, function()
+        incrementTime()
+        --print(hour.."-"..minute.."-"..second..", "..lastUpdate.." > "..mins)
+    end)--function()
+
+tmr.alarm(0, 11900, 1, function()
+
+    ip = wifi.sta.getip()
+    if ip=="0.0.0.0" or ip==nil then
+        print("connecting to AP...")
+    else
+        getTime()
+    end -- if
+
+end)-- function
+
+--==============================================================================
