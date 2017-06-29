@@ -18,7 +18,7 @@ fix             = "GET /update?key=XXXXXXXXXXXXXXXX&"   --The long XX..X is the 
 
 thingspeak_IP   = "184.106.153.149" --api.thingspeak.com 
  
-file_to_exec    = "googletime.lua"
+file_to_exec    = "counter.lua"
 
 
 gpio.mode(gpio0,gpio.INT,gpio.PULLUP)
