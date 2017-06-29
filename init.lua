@@ -2,7 +2,8 @@
 wifi.setmode(wifi.STATION)
 print('set mode=STATION (mode='..wifi.getmode()..')')
 
-wifi.sta.config("yourSSID","yourPASSWORD")
+dofile("config.lua")
+wifi.sta.config(ssid,pswd)
 
 tmr.alarm(0, 5000, 1, function()
    ip = wifi.sta.getip()
@@ -11,6 +12,7 @@ tmr.alarm(0, 5000, 1, function()
    else
       tmr.stop(0)
       print("IP = "..wifi.sta.getip())
-      dofile("counter.lua")
-   end
-end)
+      print("File to exec: "..file_to_exec)
+      dofile(file_to_exec)
+   end   --if
+end)  --function
